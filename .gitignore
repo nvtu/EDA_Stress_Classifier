@@ -1,0 +1,7 @@
+__pycache__
+.vscode
+.ipynb_checkpoints
+dull_worker.ipynb
+gsr_analysis_old.ipynb
+gsr_classify_old.ipynb
+plot_confusion_matrix.ipynb
