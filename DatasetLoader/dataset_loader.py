@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Tuple, Dict, List
 from .signal_processing import *
 from collections import Counter
+import pickle
 
 
 class DatasetLoader:
@@ -18,27 +19,24 @@ class DatasetLoader:
         self.collected_gsr_path = parser['DATA_PATH']['gsr_dataset_path']
         self.collected_gsr_groundtruth_path = osp.join(osp.dirname(self.collected_gsr_path), 'Ground-Truth.csv')
         self.wesad_gsr_path = parser['DATA_PATH']['wesad_dataset_path']
-        self.wesad_gsr_data_path = osp.join(self.wesad_gsr_path, 'eda')
-        self.wesad_gsr_groundtruth_path = osp.join(osp.dirname(self.wesad_gsr_path), 'Labels')
+        self.wesad_gsr_groundtruth_path = osp.join(osp.dirname(self.wesad_gsr_path), 'WESAD-Ground-Truth.csv')
 
 
-    def load_wesad_gsr_dataset(self):
+    def load_wesad_gsr_dataset(self) -> Tuple[ Dict[str, Dict[str, pd.DataFrame]], pd.DataFrame ]:
+        gsr_data, groundtruth_df = self.__load_dataset(self.wesad_gsr_path, self.wesad_gsr_groundtruth_path)
+        return gsr_data, groundtruth_df
+
+
+    def load_collected_gsr_dataset(self) -> Tuple[ Dict[str, Dict[str, pd.DataFrame]], pd.DataFrame ]:
+        gsr_data, groundtruth_df = self.__load_dataset(self.collected_gsr_path, self.collected_gsr_groundtruth_path)
+        return gsr_data, groundtruth_df
+
+
+    def __load_dataset(self, dataset_path, ground_truth_path) -> Tuple[ Dict[str, Dict[str, pd.DataFrame]], pd.DataFrame ]:
         # Load participants' GSR dataset
         gsr_data = defaultdict(dict)
-        participant_ids = sorted(os.listdir(self.wesad_gsr_data_path))
-        participant_data_path = [osp.join(self.wesad_gsr_data_path, participant_id) for participant_id in participant_ids]
-        # 
-        # Iterate through each participant's data folder
-        for index, data_path in enumerate(participant_data_path):
-            microsiemens = [float(line.rstrip()) for line in open(data_path, 'r').readlines()]
-
-
-
-    def load_collected_gsr_dataset(self) -> Tuple[ Dict[str, Dict[str, pd.DataFrame]], pd.DataFrame ]: 
-        # Load participants' GSR dataset
-        gsr_data = defaultdict(dict)
-        participant_ids = sorted(os.listdir(self.collected_gsr_path))
-        participant_data_path = [osp.join(self.collected_gsr_path, participant_id) for participant_id in participant_ids]
+        participant_ids = sorted(os.listdir(dataset_path))
+        participant_data_path = [osp.join(dataset_path, participant_id) for participant_id in participant_ids]
         # Iterate through each participant's data folder
         for index, participant_data in enumerate(participant_data_path):
             task_names = sorted(os.listdir(participant_data))
@@ -51,8 +49,9 @@ class DatasetLoader:
                 gsr_data[participant_id][task_name] = df
 
         # Load ground-truth of the dataset
-        groundtruth_df = pd.read_csv(self.collected_gsr_groundtruth_path)
+        groundtruth_df = pd.read_csv(ground_truth_path)
         return gsr_data, groundtruth_df
+
     
     # This function will not work with the updated code
     def aggregate_gsr_dataset(self, dataset: Dict[str, Dict[str, pd.DataFrame]], selected_columns: List[str]) -> Dict[str, Dict[str, pd.DataFrame]]:

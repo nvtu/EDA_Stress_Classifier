@@ -38,11 +38,24 @@ def select_single_signal(data: Dict[str, Dict[str, object]], feature_index: int)
     return output
 
 
+def resampling_data_signal(data: Dict[str, Dict[str, object]], sampling_rate: int, desired_sampling_rate: int, method: str = 'interpolation') -> Dict[str, Dict[str, object]]:
+    output = defaultdict(dict)
+    for participant_id, dataset in data.items():
+        for task_id, signal_data in dataset.items():
+            resampled_signal = nk.signal_resample(signal_data, method = method, sampling_rate = sampling_rate, desired_sampling_rate = desired_sampling_rate)
+            output[participant_id][task_id] = resampled_signal
+    return output
+
+
 def extract_gsr_features(microsiemens: List[float], sampling_rate) -> pd.DataFrame:
-    eda_decomposed = nk.eda_phasic(microsiemens, sampling_rate=sampling_rate)
-    eda_peaks, info = nk.eda_peaks(eda_decomposed['EDA_Phasic'], sampling_rate=sampling_rate)
-    signals = pd.DataFrame({"EDA_Raw": microsiemens})
-    signals = pd.concat([signals, eda_decomposed, eda_peaks], axis=1)
+    if sampling_rate < 10:
+        eda_decomposed = nk.eda_phasic(microsiemens, sampling_rate=sampling_rate)
+        eda_peaks, info = nk.eda_peaks(eda_decomposed['EDA_Phasic'], sampling_rate=sampling_rate)
+        signals = pd.DataFrame({"EDA_Raw": microsiemens})
+        signals = pd.concat([signals, eda_decomposed, eda_peaks], axis=1)
+    else:
+        signals = nk.eda_process(microsiemens, sampling_rate=sampling_rate)
+        signals = pd.DataFrame(signals[0])
     return signals
 
 
@@ -74,7 +87,7 @@ def statistics_gsr_signal_features(gsr_features: pd.DataFrame) -> np.array:
     
     # Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Marberger, and Kristof Van Laerhoven. 2018. Introducing WESAD, a Multimodal Dataset for Wearable Stress and Affect Detection.
     # In Proceedings of the 20th ACM International Conference on Multimodal Interaction (ICMI '18). Association for Computing Machinery, New York, NY, USA, 400–408. DOI:https://doi.org/10.1145/3242969.3242985
-    slope_eda, *r = linregress(_time_axis, eda_raw)
+    # slope_eda, *r = linregress(_time_axis, eda_raw)
     num_scr_peaks = scr_peaks.sum()
     mean_eda, std_eda, min_eda, max_eda = eda_raw.mean(), eda_raw.std(), eda_raw.min(), eda_raw.max()
     eda_dynamic_range = max_eda - min_eda
@@ -103,7 +116,7 @@ def statistics_gsr_signal_features(gsr_features: pd.DataFrame) -> np.array:
     RMSC = math.sqrt(APSC)
     statistics_feat = np.array([mean_scl, std_scl, std_scr, corr, 
                 num_responses, sum_scr_response_duration, sum_scr_amplitude, area_of_response_curve,
-                slope_eda, num_scr_peaks, mean_eda, std_eda, min_eda, max_eda, eda_dynamic_range,
+                num_scr_peaks, mean_eda, std_eda, min_eda, max_eda, eda_dynamic_range,
                 mean_scr, max_scr, min_scr, kurtosis_scr, skewness_scr, mean_first_grad, std_first_grad, mean_second_grad, std_second_grad, 
                 mean_peaks, max_peaks, min_peaks, std_peaks, mean_onsets, max_onsets, min_onsets, std_onsets,
                 ALSC, INSC, APSC, RMSC])

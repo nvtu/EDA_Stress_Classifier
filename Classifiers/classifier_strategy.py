@@ -47,7 +47,7 @@ class TryMLClassifierStrategy():
             y_trues.append(y_test)
         mean_acc_train = sum(acc_train) / len(acc_train)
         mean_acc_test = sum(acc_test) / len(acc_test)
-        if self.multiclass is True:
+        if self.multiclass is False:
             roc_scores = [roc_auc_score(y_trues[index], y_scores[index]) for index in range(len(y_trues))]
             print(f"ROC AUC Score: {roc_scores}")
         print(f"Mean accuracy of train set: {mean_acc_train}")
@@ -55,7 +55,7 @@ class TryMLClassifierStrategy():
     
 
     def try_group_kfold(self, clf):
-        gkf = GroupKFold(n_splits=3)
+        gkf = GroupKFold(n_splits=4)
         acc_train = []
         acc_test = []
         y_scores = []
@@ -94,7 +94,7 @@ class TryMLClassifierStrategy():
             ml_strategy = TryMLClassifierStrategy(X_selected, self.y, balanced_weight=self.balanced_weight, multiclass=self.multiclass)
             ml_strategy.try_cross_validation(clf)
         # if group_validation is True:
-        #     group_kfold = GroupKFold(n_splits=3)
+        #     group_kfold = GroupKFold(n_splits=4)
         #     rfecv = RFECV(estimator=clf, step=1, cv=group_kfold, scoring='accuracy')
         #     X_selected = rfecv.fit_transform(self.X, self.y)
         #     print(f"{rfecv.n_features_} features remain")
