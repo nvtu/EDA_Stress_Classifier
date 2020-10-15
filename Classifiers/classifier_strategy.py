@@ -12,6 +12,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import itertools
 
 
@@ -75,9 +76,9 @@ class TryMLClassifierStrategy():
         mean_acc_train = sum(acc_train) / len(acc_train)
         mean_acc_test = sum(acc_test) / len(acc_test)
         test_groups = [list(set(group)) for group in test_groups]
+        print(f"Groups: {test_groups}")
         if self.multiclass is False:
             roc_scores = [roc_auc_score(y_trues[index], y_scores[index]) for index in range(len(y_trues))]
-            print(f"Groups: {test_groups}")
             print(f"ROC AUC Score: {roc_scores}")
         print(f"Mean accuracy of train set: {mean_acc_train}")
         print(f"Mean accuracy of test set: {mean_acc_test}")
@@ -90,12 +91,16 @@ class TryMLClassifierStrategy():
             X_selected = rfecv.fit_transform(self.X, self.y)
             print(f"{rfecv.n_features_} features remain")
             print("------After recursive feature elimination------")
-            if cross_validation is True:
-                ml_strategy = TryMLClassifierStrategy(X_selected, self.y, balanced_weight=self.balanced_weight, multiclass=self.multiclass)
-                ml_strategy.try_cross_validation(clf)
-            if group_validation is True:
-                ml_strategy = TryMLClassifierStrategy(X_selected, self.y, groups=self.groups, balanced_weight=self.balanced_weight, multiclass=self.multiclass)
-                ml_strategy.try_group_kfold(clf)
+            ml_strategy = TryMLClassifierStrategy(X_selected, self.y, balanced_weight=self.balanced_weight, multiclass=self.multiclass)
+            ml_strategy.try_cross_validation(clf)
+        # if group_validation is True:
+        #     group_kfold = GroupKFold(n_splits=3)
+        #     rfecv = RFECV(estimator=clf, step=1, cv=group_kfold, scoring='accuracy')
+        #     X_selected = rfecv.fit_transform(self.X, self.y)
+        #     print(f"{rfecv.n_features_} features remain")
+        #     print("------After recursive feature elimination------")
+        #     ml_strategy = TryMLClassifierStrategy(X_selected, self.y, groups=self.groups, balanced_weight=self.balanced_weight, multiclass=self.multiclass)
+        #     ml_strategy.try_group_kfold(clf)
             
     
     def try_ensemble_feature_selection(self, clf, cross_validation: bool = False, group_validation: bool = False):
@@ -186,6 +191,14 @@ class TryMLClassifierStrategy():
             self.try_group_kfold(clf)
 
 
+    def try_lda_classifier(self, cross_validation: bool = False, group_validation: bool = False):
+        clf = LinearDiscriminantAnalysis()
+        if cross_validation is True:
+            self.try_cross_validation(clf)
+        if group_validation is True:
+            self.try_group_kfold(clf)
+
+
     def try_different_strategies(self, cross_validation: bool = False, group_validation: bool = False):
         # Try LogisticRegression
         print("Try Logistic Regression...")
@@ -218,3 +231,7 @@ class TryMLClassifierStrategy():
         # Try XGBoostClassifier
         print("Try XGBoostClassifier...")
         self.try_xgboost_classifier(cross_validation = cross_validation, group_validation = group_validation)
+        print('--------------------------------------')
+        # Try Linear Discriminate Analysis
+        print("Try Linear Discriminate Analysis...")
+        self.try_lda_classifier(cross_validation = cross_validation, group_validation = group_validation)
