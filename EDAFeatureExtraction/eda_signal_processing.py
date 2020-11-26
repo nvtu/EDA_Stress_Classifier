@@ -7,38 +7,7 @@ from scipy.stats import kurtosis, skew, linregress, pearsonr
 import math
 
 
-# This function will not work with the updated code
-def aggregate_signal_data(data: pd.DataFrame, sampling_rate: int) -> pd.DataFrame:
-    # data variables should contain two columns: SECOND and MICROSIEMENS
-    
-    aggregated_data = []
-    signal_data = []
-    for index, row in enumerate(data.values):
-        if (int(index) % sampling_rate) == 0 and int(index) > 0:
-            avg_signal_data = np.average(signal_data, axis=0)
-            signal_data = []
-            aggregated_data.append(avg_signal_data.tolist())
-        signal_data.append(row)
-    
-    df = pd.DataFrame(data=aggregated_data, columns=data.columns)
-    return df
-
-
-def select_single_signal(data: Dict[str, Dict[str, object]], feature_index: int) -> Dict[str, Dict[str, np.array]]:
-    output = defaultdict(dict)
-    for participant_id, dataset in data.items():
-        for task_id, signal_data in dataset.items():
-            selected_signal_data = None
-            output[participant_id][task_id] = []
-            if type(signal_data) is pd.DataFrame:
-                selected_signal_data = signal_data.values[:, feature_index]
-            elif type(signal_data) is list:
-                selected_signal_data = np.array([feat.values[:, feature_index] for feat in signal_data])
-            output[participant_id][task_id] = selected_signal_data
-    return output
-
-
-def resampling_data_signal(data: Dict[str, Dict[str, object]], sampling_rate: int, desired_sampling_rate: int, method: str = 'interpolation') -> Dict[str, Dict[str, object]]:
+def resampling_data_signal(data: Dict[str, Dict[str, np.array]], sampling_rate: int, desired_sampling_rate: int, method: str = 'interpolation') -> Dict[str, Dict[str, object]]:
     output = defaultdict(dict)
     for participant_id, dataset in data.items():
         for task_id, signal_data in dataset.items():
@@ -47,25 +16,25 @@ def resampling_data_signal(data: Dict[str, Dict[str, object]], sampling_rate: in
     return output
 
 
-def extract_gsr_features(microsiemens: List[float], sampling_rate) -> pd.DataFrame:
-    if sampling_rate < 10:
-        eda_decomposed = nk.eda_phasic(microsiemens, sampling_rate=sampling_rate)
-        eda_peaks, info = nk.eda_peaks(eda_decomposed['EDA_Phasic'], sampling_rate=sampling_rate)
-        signals = pd.DataFrame({"EDA_Raw": microsiemens})
-        signals = pd.concat([signals, eda_decomposed, eda_peaks], axis=1)
-    else:
-        signals = nk.eda_process(microsiemens, sampling_rate=sampling_rate)
-        signals = pd.DataFrame(signals[0])
+def extract_eda_features(eda: List[float], sampling_rate) -> pd.DataFrame:
+    HIGHCUT_FREQUENCY = 5 # defaults as BioSPPy
+    nyquist_freq = 2 * HIGHCUT_FREQUENCY / sampling_rate # Normalize frequency to Nyquist Frequency (Fs/2)
+    if 0 < nyquist_freq < 1:
+        eda = nk.eda_clean(eda, sampling_rate=sampling_rate, method='biosppy')
+    eda_decomposed = nk.eda_phasic(eda, sampling_rate=sampling_rate)
+    scr_peaks, info = nk.eda_peaks(eda_decomposed['EDA_Phasic'], sampling_rate=sampling_rate)
+    signals = pd.DataFrame({"EDA_Raw": eda})
+    signals = pd.concat([signals, eda_decomposed, scr_peaks], axis=1)
     return signals
 
 
-def statistics_gsr_signal_features(gsr_features: pd.DataFrame) -> np.array:
-    eda_raw = gsr_features['EDA_Raw'].values
-    eda_decomposed_phasic = gsr_features['EDA_Phasic'].values
-    eda_decomposed_tonic =gsr_features['EDA_Tonic'].values
-    scr_peaks = gsr_features['SCR_Peaks'].values
-    scr_onsets = gsr_features['SCR_Onsets'].values
-    scr_amplitude = gsr_features['SCR_Amplitude']
+def extract_statistics_eda_features(eda: pd.DataFrame) -> np.array:
+    eda_raw = eda['EDA_Raw'].values
+    eda_decomposed_phasic = eda['EDA_Phasic'].values
+    eda_decomposed_tonic =eda['EDA_Tonic'].values
+    scr_peaks = eda['SCR_Peaks'].values
+    scr_onsets = eda['SCR_Onsets'].values
+    scr_amplitude = eda['SCR_Amplitude']
     _time_axis = np.array([_time for _time in range(len(eda_raw))])
 
     # Choi J, Ahmed B, Gutierrez-Osuna R. Development and evaluation of an ambulatory stress monitor based on wearable sensors. 
@@ -114,7 +83,8 @@ def statistics_gsr_signal_features(gsr_features: pd.DataFrame) -> np.array:
     INSC = np.sum(np.abs(eda_decomposed_phasic))
     APSC = np.sum(eda_decomposed_phasic * eda_decomposed_phasic) / len(eda_decomposed_phasic)
     RMSC = math.sqrt(APSC)
-    statistics_feat = np.array([mean_scl, std_scl, std_scr, corr, 
+    statistics_feat = np.array([
+                mean_scl, std_scl, std_scr, corr, 
                 num_responses, sum_scr_response_duration, sum_scr_amplitude, area_of_response_curve,
                 num_scr_peaks, mean_eda, std_eda, min_eda, max_eda, eda_dynamic_range,
                 mean_scr, max_scr, min_scr, kurtosis_scr, skewness_scr, mean_first_grad, std_first_grad, mean_second_grad, std_second_grad, 
