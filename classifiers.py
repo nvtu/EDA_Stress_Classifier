@@ -3,7 +3,7 @@ from sklearn.impute import SimpleImputer
 from typing import Tuple, Dict
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut, GridSearchCV, train_test_split
+from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut, GridSearchCV, train_test_split, ParameterGrid
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
@@ -60,13 +60,13 @@ class BinaryClassifier:
     def __get_classifier(self, method):
         clf = None 
         if method == 'random_forest':
-            clf = RandomForestClassifier()
+            clf = RandomForestClassifier(random_state = self.random_state)
         elif method == 'logistic_regression':
-            clf = LogisticRegression()
+            clf = LogisticRegression(random_state = self.random_state)
         elif method == 'svm':
-            clf = SVC()
+            clf = SVC(random_state = self.random_state)
         elif method == 'mlp':
-            clf = MLPClassifier()
+            clf = MLPClassifier(random_state = self.random_state)
         elif method == 'knn':
             clf = KNeighborsClassifier()
         return clf
@@ -91,30 +91,17 @@ class BinaryClassifier:
         num_classes_train = len(np.unique(y_train))
         if num_classes_test < 2 or num_classes_train < 2: # If one of them does not have enough classes, then ignore it
             balanced_accuracy = -1
-            cv_balanced_accuracy = -1
-            return cv_balanced_accuracy, balanced_accuracy
+            return balanced_accuracy
 
         X_train, X_test = self.__transform_data(method, X_train, X_test) # Feature scaling if possible
 
-        # Get hyperparamters for grid-search and classifier of the corresponding method
-        hyper_params = self.__get_hyper_parameters(method)
-        clf = self.__get_classifier(method)
-
-        # Define some constant parameters of the grid-search algorithm
-        CV_NUM_SPLITS = 3
-        VERBOSE = False
-        N_JOBS = -1 # Use all CPUs
-
-        # Start training
-        self.grid_search_cv = GridSearchCV(estimator = clf, scoring = self.scoring, 
-            cv = StratifiedKFold(n_splits = CV_NUM_SPLITS), param_grid = hyper_params, verbose = VERBOSE, n_jobs = N_JOBS).fit(X_train, y_train)
-        cv_balanced_accuracy = self.grid_search_cv.best_score_
+        clf =  self.__run_grid_search(method, X_train, y_train)
         
         # Fit the classifier into test set
-        y_preds = self.grid_search_cv.predict(X_test)
+        y_preds = clf.predict(X_test)
         # Evaluate the results based on balanced_accuracy_score
         balanced_accuracy = self.evaluate(y_test, y_preds)
-        return cv_balanced_accuracy, balanced_accuracy
+        return balanced_accuracy
 
 
     def leave_one_group_out_validator(self, method: str) -> Dict[str, list]:
@@ -123,13 +110,6 @@ class BinaryClassifier:
         balanced_accs = []
         cv_balanced_acc_scores = []
 
-        # Get hyperparameters for grid-search and classifier of the corresponding method
-        hyper_params = self.__get_hyper_parameters(method)
-
-        # Define some constant parameters of the grid-search algorithm
-        CV_NUM_SPLITS = 3
-        VERBOSE = False
-        N_JOBS = -1 # Use all CPUs
 
         for train_index, test_index in tqdm(logo.split(self.X, self.y, self.groups)):
             X_train, y_train, X_test, y_test = self.X[train_index], self.y[train_index], self.X[test_index], self.y[test_index] # Get train and test data
@@ -141,15 +121,17 @@ class BinaryClassifier:
 
             X_train, X_test = self.__transform_data(method, X_train, X_test) # Feature scaling if possible
 
-            clf = self.__get_classifier(method) # Re-initialize classifier when iterating a new group
+            clf = self.__run_grid_search(method, X_train, y_train)
 
-            # Run grid-search cross-validation
-            self.grid_search_cv = GridSearchCV(estimator = clf, scoring = self.scoring, cv = StratifiedKFold(n_splits = CV_NUM_SPLITS), 
-                        param_grid = hyper_params, verbose = VERBOSE, n_jobs = N_JOBS).fit(X_train, y_train)
-            cv_balanced_acc_scores.append(self.grid_search_cv.best_score_) # Save Grid-Search CV best score
+            # -------------------- THIS IS NOT VALIDATED FOR SIGNIFICANCE TESTING ----------------------------
+            # # Run grid-search cross-validation
+            # self.grid_search_cv = GridSearchCV(estimator = clf, scoring = self.scoring, cv = StratifiedKFold(n_splits = CV_NUM_SPLITS, random_state = RANDOM_STATE), 
+            #             param_grid = hyper_params, verbose = VERBOSE, n_jobs = N_JOBS).fit(X_train, y_train)
+            # cv_balanced_acc_scores.append(self.grid_search_cv.best_score_) # Save Grid-Search CV best score
+            # ------------------------------------------------------------------------------------------------
             
             # Run prediction on test set
-            y_preds = self.grid_search_cv.predict(X_test)
+            y_preds = clf.predict(X_test)
 
             # Evaluate balanced accuracy on the predicted results of test set
             balanced_accuracy = self.evaluate(y_test, y_preds)
@@ -158,9 +140,32 @@ class BinaryClassifier:
             # Save the corresponding user_id
             test_groups.append(self.groups[test_index][0])
         
-        results = { 'groups': test_groups, 'balanced_accurary_score': balanced_accs, 'cv_balanced_accuracy_score': cv_balanced_acc_scores }
+        results = { 'groups': test_groups, 'balanced_accurary_score': balanced_accs }
         return results
- 
+
+    
+    def __run_grid_search(self, method, X_train, y_train):
+        # Get hyperparamters for grid-search and classifier of the corresponding method
+        hyper_params = self.__get_hyper_parameters(method)
+        clf = self.__get_classifier(method)
+
+        # Perfrom Grid-Search manually
+        best_score = 0
+        best_params = None
+        for params in ParameterGrid(hyper_params):
+            clf.set_params(**params)
+            clf.fit(X_train, y_train)
+            y_preds = clf.predict(X_train)
+            ba_score = self.evaluate(y_train, y_preds)
+            if ba_score > best_score:
+                best_score = ba_score
+                best_params = params
+        # Set-up best params for the prediction models
+        print(f"{method} best grid search score: {best_score} with params - {best_params}")
+        clf.set_params(**best_params)
+        clf.fit(X_train, y_train)
+        return clf
+
 
     def exec_classifier(self):
         if self.cross_validation is True:

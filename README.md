@@ -1,6 +1,6 @@
 # Stress Detection Using Electrodermal Activity Signal (EDA) and Machine Learning Models
 
-This code is made to determin the approach to build stress detection using Electrodermal Activity Signal (EDA) with machine learning models. It proves the hypotheses that using low sampling-rate signal as data to build stress detector has no statistically difference from the one trained on high sampling-rate data. 
+This code is made to determine the approach to build stress detection using Electrodermal Activity Signal (EDA) with machine learning models. It proves the hypotheses that using low sampling-rate signal as data to build stress detector has no statistically difference from the one trained on high sampling-rate data. 
 With low sampling-rate data, it is proved that using person-specific stress detector (user-dependent model) is better than general cross-population stress detector (user-independent model).
 
 The experiment was conduct using **WESAD**, **AffectiveROAD**, and **DCU-NVT-EXP1** datasets. You can download it [here](https://drive.google.com/file/d/15BpNyTRY0OsFJ06FaVZcDtRgV-Y4a81P/view?usp=sharing).
