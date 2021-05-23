@@ -90,8 +90,8 @@ def extract_stats_features(eda: Dict[str, Dict[str, List[float]]], window_size: 
     for user_id, data in tqdm(eda.items()):
         for task_id, eda_signal in data.items():
             len_eda_signal = len(eda_signal)
-            step = window_shift * sampling_rate # The true step to slide along the time axis of the signal
-            first_iter = window_size * sampling_rate # The true index of the signal at a time-point 
+            step = int(window_shift * sampling_rate) # The true step to slide along the time axis of the signal
+            first_iter = int(window_size * sampling_rate) # The true index of the signal at a time-point 
             for current_iter in range(first_iter, len_eda_signal, step): # current_iter is "second_iter"
                 previous_iter = current_iter - first_iter
                 signal = eda_signal[previous_iter:current_iter]
@@ -114,8 +114,8 @@ def map_ground_truth(ground_truth: Dict[str, Dict[str, List[int]]], window_size:
     for user_id, data in tqdm(ground_truth.items()):
         for task_id, _ground_truth in data.items():
             len_ground_truth = len(_ground_truth)
-            start_index = window_size * sampling_rate # The true index of the signal at a time-point
-            step = window_shift * sampling_rate
+            start_index = int(window_size * sampling_rate) # The true index of the signal at a time-point
+            step = int(window_shift * sampling_rate)
             gt += [_ground_truth[index] for index in range(start_index, len_ground_truth, step)] # Append the flatten array 
     gt = np.array(gt) # Transform to numpy array format
     return gt
@@ -134,8 +134,8 @@ def generate_data_groups_from_ground_truth(ground_truth: Dict[str, Dict[str, Lis
     for user_id, data in tqdm(ground_truth.items()):
         for task_id, _ground_truth in data.items():
             len_ground_truth = len(_ground_truth)
-            start_index = window_size * sampling_rate
-            step = window_shift * sampling_rate
+            start_index = int(window_size * sampling_rate)
+            step = int(window_shift * sampling_rate)
             groups += [user_id for _ in range(start_index, len_ground_truth, step)]
     groups = np.array(groups)
     return groups

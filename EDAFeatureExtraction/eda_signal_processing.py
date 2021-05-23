@@ -31,10 +31,10 @@ def extract_eda_features(eda: List[float], sampling_rate) -> pd.DataFrame:
 def extract_statistics_eda_features(eda: pd.DataFrame) -> np.array:
     eda_raw = eda['EDA_Raw'].values
     eda_decomposed_phasic = eda['EDA_Phasic'].values
-    eda_decomposed_tonic =eda['EDA_Tonic'].values
+    eda_decomposed_tonic = eda['EDA_Tonic'].values
     scr_peaks = eda['SCR_Peaks'].values
     scr_onsets = eda['SCR_Onsets'].values
-    scr_amplitude = eda['SCR_Amplitude']
+    scr_amplitude = eda['SCR_Amplitude'].values
     _time_axis = np.array([_time for _time in range(len(eda_raw))])
 
     # Choi J, Ahmed B, Gutierrez-Osuna R. Development and evaluation of an ambulatory stress monitor based on wearable sensors. 
@@ -46,13 +46,26 @@ def extract_statistics_eda_features(eda: pd.DataFrame) -> np.array:
     # J. A. Healey and R. W. Picard, "Detecting stress during real-world driving tasks using physiological sensors," 
     # in IEEE Transactions on Intelligent Transportation Systems, vol. 6, no. 2, pp. 156-166, June 2005, doi: 10.1109/TITS.2005.848368.
     onset_time_points = scr_onsets * _time_axis
+    onset_magnitude = abs(scr_amplitude[onset_time_points > 0])
+    onset_time_points = onset_time_points[onset_time_points > 0]
     peak_time_points = scr_peaks * _time_axis
+    peak_magnitude = abs(scr_amplitude[peak_time_points > 0])
+    peak_time_points = peak_time_points[peak_time_points > 0]
+    # Balance the size of onset and peak points as we only consider a complete startle response
+    if len(peak_time_points) > len(onset_time_points): 
+        peak_time_points = peak_time_points[:-1]
+        peak_magnitude = peak_magnitude[:-1]
+    elif len(peak_time_points) < len(onset_time_points): 
+        onset_time_points = onset_time_points[:-1]
+        onset_magnitude = onset_magnitude[:-1]
+    # -----
     scr_response_duration = peak_time_points - onset_time_points
+    startle_magnitude = peak_magnitude - onset_magnitude
 
     num_responses = len(scr_response_duration)
-    sum_scr_response_duration = (peak_time_points - onset_time_points).sum()
-    sum_scr_amplitude = scr_amplitude.sum()
-    area_of_response_curve = (scr_response_duration * scr_amplitude).sum() / 2.0
+    sum_scr_response_duration = scr_response_duration.sum()
+    sum_scr_amplitude = startle_magnitude.sum()
+    area_of_response_curve = (scr_response_duration * startle_magnitude).sum() / 2.0
     
     # Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Marberger, and Kristof Van Laerhoven. 2018. Introducing WESAD, a Multimodal Dataset for Wearable Stress and Affect Detection.
     # In Proceedings of the 20th ACM International Conference on Multimodal Interaction (ICMI '18). Association for Computing Machinery, New York, NY, USA, 400–408. DOI:https://doi.org/10.1145/3242969.3242985
