@@ -83,8 +83,35 @@ class BinaryClassifier:
         return scaled_X_train, scaled_X_test
     
 
+    def split_train_test_cv(self, test_size = 0.2):
+        X_train = np.array([])
+        X_test = np.array([])
+        y_train = np.array([])
+        y_test = np.array([])
+        num_items = len(self.y)
+        first_pointer = 0
+        train_size = 1 - test_size
+        for i in range(1, num_items):
+            if self.y[i] != self.y[i-1] or i == num_items - 1:
+                if i == num_items - 1: i += 1 
+                _y = self.y[first_pointer:i]
+                _X = self.X[first_pointer:i]
+                train_index = int(train_size * len(_y))
+                X_train = np.append(X_train, _X[:train_index])
+                y_train = np.append(y_train, _y[:train_index])
+                X_test = np.append(X_test, _X[train_index:])
+                y_test = np.append(y_test, _y[train_index:])
+                first_pointer = i
+        X_train = X_train.reshape(len(y_train), -1)
+        y_train = np.array(y_train)
+        X_test = X_test.reshape(len(y_test), -1)
+        y_test = np.array(y_test)
+        return X_train, X_test, y_train, y_test
+
+
     def cross_validator(self, method: str):
-        X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=0.286, stratify = self.y, random_state = self.random_state) # Split train test data
+        # X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=0.286, stratify = self.y, random_state = self.random_state) # Split train test data
+        X_train, X_test, y_train, y_test = self.split_train_test_cv(test_size = 0.286)
 
         # Validate if the test set and train set have two classes
         num_classes_test = len(np.unique(y_test))

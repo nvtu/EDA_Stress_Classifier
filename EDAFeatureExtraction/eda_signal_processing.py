@@ -52,13 +52,17 @@ def extract_statistics_eda_features(eda: pd.DataFrame) -> np.array:
     peak_magnitude = abs(scr_amplitude[peak_time_points > 0])
     peak_time_points = peak_time_points[peak_time_points > 0]
     # Balance the size of onset and peak points as we only consider a complete startle response
-    if len(peak_time_points) > len(onset_time_points): 
-        peak_time_points = peak_time_points[:-1]
-        peak_magnitude = peak_magnitude[:-1]
-    elif len(peak_time_points) < len(onset_time_points): 
-        onset_time_points = onset_time_points[:-1]
-        onset_magnitude = onset_magnitude[:-1]
-    # -----
+    if len(peak_time_points) > 0 and len(onset_time_points) > 0:
+        if peak_time_points[0] < onset_time_points[0]:
+            peak_time_points = peak_time_points[1:]
+            peak_magnitude = peak_magnitude[1:]
+        if len(peak_time_points) > len(onset_time_points):
+            peak_time_points = peak_time_points[:-1]
+            peak_magnitude = peak_magnitude[:-1]
+        elif len(peak_time_points) < len(onset_time_points):
+            onset_time_points = onset_time_points[:-1]
+            onset_magnitude = onset_magnitude[:-1]
+    
     scr_response_duration = peak_time_points - onset_time_points
     startle_magnitude = peak_magnitude - onset_magnitude
 
