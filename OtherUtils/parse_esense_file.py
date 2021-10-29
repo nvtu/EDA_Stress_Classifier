@@ -6,7 +6,7 @@ import platform
 
 
 if __name__ == '__main__':
-    parent_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
+    parent_dir = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__))))
     if platform.system() == 'Windows':
         parent_dir = parent_dir.replace('\\', '/')
     raw_data_dir = '/'.join([parent_dir, 'MyDataset', 'raw_eSense_Skin_Response'])
@@ -17,7 +17,6 @@ if __name__ == '__main__':
     file_path_list = [osp.join(raw_data_dir, f) for f in sorted(os.listdir(raw_data_dir)) if f.split('.')[-1] == 'csv']   
     for file_path in tqdm(file_path_list):
         data = []
-        # Get necessary labels & metadata
         content = [line.rsplit() for line in open(file_path, 'r').readlines()]
         date = content[3][-2].replace('.', '-').split(';')[-1]
         start_time = content[3][-1].replace(';', '') 

@@ -1,14 +1,18 @@
+from ast import Str
+from os import pipe
 import numpy as np
 from sklearn.impute import SimpleImputer
 from typing import Tuple, Dict
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut, GridSearchCV, train_test_split, ParameterGrid
-from sklearn.metrics import balanced_accuracy_score, confusion_matrix
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut, cross_validate, GridSearchCV, train_test_split, ParameterGrid
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix, accuracy_score
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from collections import Counter
 from tqdm import tqdm
 
 
@@ -48,8 +52,7 @@ class BinaryClassifier:
         elif method == 'logistic_regression':
             params = {'C': [0.001, 0.01, 0.1, 0.25, 0.5, 0.75, 1, 10], 'class_weight': ['balanced', None] }
         elif method == 'svm':
-            params = {'C': [0.001, 0.01, 0.1, 0.25, 0.5, 0.75, 1, 10], 'class_weight': ['balanced', None],
-                'kernel': ['rbf'] }
+            params = {'C': [0.001, 0.01, 0.1, 0.25, 0.5, 0.75, 1, 10], 'class_weight': ['balanced', None] }
         elif method == 'mlp':
             params = { 'hidden_layer_sizes': [(64,), (128,), (256,), (512,)] } 
         elif method == 'knn':
@@ -60,22 +63,28 @@ class BinaryClassifier:
     def __get_classifier(self, method):
         clf = None 
         if method == 'random_forest':
-            clf = RandomForestClassifier(random_state = self.random_state)
+            clf = RandomForestClassifier(n_estimators = 200, random_state = self.random_state, n_jobs = -1, max_features='sqrt',
+                                oob_score=True, bootstrap=True, class_weight = 'balanced', )
         elif method == 'logistic_regression':
             clf = LogisticRegression(random_state = self.random_state)
         elif method == 'svm':
-            clf = SVC(random_state = self.random_state)
+            clf = SVC(C = 10, random_state = self.random_state, class_weight = 'balanced')
         elif method == 'mlp':
-            clf = MLPClassifier(random_state = self.random_state)
+            clf = MLPClassifier(random_state = self.random_state, early_stopping = True, max_iter = 1000, activation = 'logistic')
         elif method == 'knn':
-            clf = KNeighborsClassifier()
+            clf = KNeighborsClassifier(n_jobs = -1, weights = 'distance')
+        elif method == 'Voting3CLF':
+            estimators = [('rf', self.__get_classifier('random_forest')), 
+                ('svm', self.__get_classifier('svm')), 
+                ('mlp', self.__get_classifier('mlp'))]
+            clf = VotingClassifier(estimators = estimators, n_jobs = -1, verbose = True)
         return clf
-    
+
 
     def __transform_data(self, method, X_train, X_test): # Transform the data using Standard Scaler
         scaled_X_train = X_train
         scaled_X_test = X_test
-        if method in ['mlp', 'svm', 'knn']: # Only use for MLP, SVM, and KNN as these methods are sensitive to feature scaling
+        if method in ['mlp', 'svm', 'knn', 'Voting3CLF']: # Only use for MLP, SVM, and KNN as these methods are sensitive to feature scaling
             std_scaler = StandardScaler()
             std_scaler.fit(X_train)
             scaled_X_train = std_scaler.transform(X_train)
@@ -111,25 +120,41 @@ class BinaryClassifier:
 
     def cross_validator(self, method: str):
         # X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=0.286, stratify = self.y, random_state = self.random_state) # Split train test data
-        X_train, X_test, y_train, y_test = self.split_train_test_cv(test_size = 0.286)
-
-        # Validate if the test set and train set have two classes
-        num_classes_test = len(np.unique(y_test))
-        num_classes_train = len(np.unique(y_train))
-        if num_classes_test < 2 or num_classes_train < 2: # If one of them does not have enough classes, then ignore it
-            balanced_accuracy = -1
-            return balanced_accuracy
-
-        X_train, X_test = self.__transform_data(method, X_train, X_test) # Feature scaling if possible
-
-        clf =  self.__run_grid_search(method, X_train, y_train)
+        # X_train, X_test, y_train, y_test = self.split_train_test_cv(test_size = 0.286)
+        # Validate if the data has two classes
+        # num_classes = len(np.unique(self.y)
+        logo = LeaveOneGroupOut()
+        balanced_accs = []
+        test_groups = []
+        for _, test_index in tqdm(logo.split(self.X, self.y, self.groups)):
+            user_dataset, user_ground_truth = self.X[test_index], self.y[test_index]
         
-        # Fit the classifier into test set
-        y_preds = clf.predict(X_test)
-        # Evaluate the results based on balanced_accuracy_score
-        balanced_accuracy = self.evaluate(y_test, y_preds)
-        return balanced_accuracy
+            # Validate if the test set and train set have enough classes
+            num_classes_test = len(np.unique(user_ground_truth))
+            if num_classes_test < 2:
+                continue
 
+            skf = StratifiedKFold(n_splits=3)
+            test_scores = []
+            for _tr_index, _t_index in skf.split(user_dataset, user_ground_truth):
+                pipeline = []
+                if method in ['mlp', 'svm', 'knn', 'Voting3CLF']:
+                    pipeline.append(('sc', StandardScaler()))
+                estimator = self.__get_classifier(method)
+                pipeline.append(('estimator', estimator))
+                pipeline = Pipeline(pipeline)
+            # scores = cross_validate(pipeline, X=user_dataset, y=user_ground_truth, scoring=self.scoring, cv=skf)
+                pipeline.fit(user_dataset[_tr_index], user_ground_truth[_tr_index])
+                y_preds = pipeline.predict(user_dataset[_t_index])
+                bacc_score = self.evaluate(user_ground_truth[_t_index], y_preds)
+                test_scores.append(bacc_score)
+            print(f'{self.groups[test_index][0]} ---', test_scores, np.mean(test_scores))            
+            balanced_accs.append(np.mean(test_scores))
+            # balanced_accs.append(np.mean(scores['test_score']))
+            test_groups.append(self.groups[test_index][0])
+        results = { 'groups': test_groups, 'balanced_accuracy_score': balanced_accs }
+        return results
+       
 
     def leave_one_group_out_validator(self, method: str) -> Dict[str, list]:
         logo = LeaveOneGroupOut()
@@ -137,61 +162,58 @@ class BinaryClassifier:
         balanced_accs = []
         cv_balanced_acc_scores = []
 
+        # feature_importances = []
 
         for train_index, test_index in tqdm(logo.split(self.X, self.y, self.groups)):
             X_train, y_train, X_test, y_test = self.X[train_index], self.y[train_index], self.X[test_index], self.y[test_index] # Get train and test data
+            train_groups = self.groups[train_index]
             # Validate if the test set and train set have two classes
             num_classes_test = len(np.unique(y_test))
             num_classes_train = len(np.unique(y_train))
             if num_classes_test < 2 or num_classes_train < 2: # If one of them does not have enough classes, then ignore it
                 continue
 
-            X_train, X_test = self.__transform_data(method, X_train, X_test) # Feature scaling if possible
+            preds = []
+            for _train_index, validate_index in LeaveOneGroupOut().split(X_train, y_train, train_groups):
+                _X, _y, X_val, y_val = X_train[_train_index], y_train[_train_index], X_train[validate_index], y_train[validate_index]
 
-            clf = self.__run_grid_search(method, X_train, y_train)
+                # Validate if the test set and train set have two classes
+                num_classes_test = len(np.unique(_y))
+                num_classes_train = len(np.unique(y_val))
+                if num_classes_test < 2 or num_classes_train < 2: # If one of them does not have enough classes, then ignore it
+                    continue
 
-            # -------------------- THIS IS NOT VALIDATED FOR SIGNIFICANCE TESTING ----------------------------
-            # # Run grid-search cross-validation
-            # self.grid_search_cv = GridSearchCV(estimator = clf, scoring = self.scoring, cv = StratifiedKFold(n_splits = CV_NUM_SPLITS, random_state = RANDOM_STATE), 
-            #             param_grid = hyper_params, verbose = VERBOSE, n_jobs = N_JOBS).fit(X_train, y_train)
-            # cv_balanced_acc_scores.append(self.grid_search_cv.best_score_) # Save Grid-Search CV best score
-            # ------------------------------------------------------------------------------------------------
-            
-            # Run prediction on test set
-            y_preds = clf.predict(X_test)
-
+                clf = self.__get_classifier(method)
+                __X, _X_test = self.__transform_data(method, _X, X_test) # Feature scaling if possible
+                _, X_val = self.__transform_data(method, _X, X_val)
+                clf.fit(__X, _y)
+                y_val_pred = clf.predict(X_val)
+                # Run prediction on test set
+                y_preds = clf.predict(_X_test)
+                print(f'--- Validate {train_groups[validate_index][0]} BA Score: {self.evaluate(y_val, y_val_pred)} --- Test BA Score: {self.evaluate(y_test, y_preds)}')
+                preds.append(y_preds)
+            preds = np.mean(np.array(preds), axis=0)
+            y_preds = np.array([0 if value < 0.5 else 1 for value in preds])                    
+            # print(set(y_preds))
             # Evaluate balanced accuracy on the predicted results of test set
             balanced_accuracy = self.evaluate(y_test, y_preds)
             balanced_accs.append(balanced_accuracy) 
 
             # Save the corresponding user_id
             test_groups.append(self.groups[test_index][0])
+            print(f'--- Test Group {self.groups[test_index][0]} BA Score: {balanced_accuracy} --- Train BA Score {self.evaluate(y_train, clf.predict(X_train))} ---')
         
-        results = { 'groups': test_groups, 'balanced_accurary_score': balanced_accs }
+        results = { 'groups': test_groups, 'balanced_accuracy_score': balanced_accs }
         return results
 
-    
-    def __run_grid_search(self, method, X_train, y_train):
-        # Get hyperparamters for grid-search and classifier of the corresponding method
-        hyper_params = self.__get_hyper_parameters(method)
-        clf = self.__get_classifier(method)
 
-        # Perfrom Grid-Search manually
-        best_score = 0
-        best_params = None
-        for params in ParameterGrid(hyper_params):
-            clf.set_params(**params)
-            clf.fit(X_train, y_train)
-            y_preds = clf.predict(X_train)
-            ba_score = self.evaluate(y_train, y_preds)
-            if ba_score > best_score:
-                best_score = ba_score
-                best_params = params
-        # Set-up best params for the prediction models
-        print(f"{method} best grid search score: {best_score} with params - {best_params}")
-        clf.set_params(**best_params)
-        clf.fit(X_train, y_train)
-        return clf
+    def train_and_infer(self, X_test, y_test):
+        clf = self.__get_classifier(self.strategy)
+        X_train, X_test = self.__transform_data(self.strategy, self.X, X_test)
+        clf.fit(X_train, self.y)
+        y_preds = clf.predict(X_test)
+        balanced_accuracy = self.evaluate(y_test, y_preds)
+        return balanced_accuracy
 
 
     def exec_classifier(self):
@@ -202,5 +224,9 @@ class BinaryClassifier:
 
 
     def evaluate(self, y_trues, y_preds):
-        balanced_accuracy = balanced_accuracy_score(y_trues, y_preds)
-        return balanced_accuracy              
+        acc = None
+        if self.scoring == 'accuracy':
+            acc = accuracy_score(y_trues, y_preds)
+        elif self.scoring == 'balanced_accuracy':
+            acc = balanced_accuracy_score(y_trues, y_preds)
+        return acc              

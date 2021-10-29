@@ -4,7 +4,7 @@
 import neurokit2 as nk
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import configparser
 import os
 import os.path as osp
@@ -22,13 +22,13 @@ import scipy
 # %%
 def get_dataset_folder_path(dataset_name: str) -> str:
     # Read dataset path from config.ini file
-    config_path = osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'config.ini')
+    config_path = osp.join(osp.dirname(os.getcwd()), 'config.ini')
     parser = configparser.ConfigParser()
     parser.read(config_path)
     dataset_folder_path = None
     if dataset_name == 'AffectiveROAD':
         dataset_folder_path = parser['DATA_PATH']['affectiveROAD_dataset_path']
-    elif dataset_name in ['WESAD_CHEST', 'WESAD_WRIST']:
+    elif dataset_name in ['WESAD_CHEST', 'WESAD_WRIST', 'RESAMPLED_WESAD_CHEST']:
         dataset_folder_path = parser['DATA_PATH']['wesad_dataset_path']
     elif dataset_name == 'DCU_NVT_EXP1':
         dataset_folder_path = parser['DATA_PATH']['dcu_nvt_dataset_path']
@@ -48,6 +48,10 @@ def load_raw_dataset(dataset_name: str):
         # Initialize dataset paths
         wesad_chest_file_path = osp.join(dataset_folder_path, 'wesad_chest_dataset.pkl')
         dataset = pickle.load(open(wesad_chest_file_path, 'rb')) # Load WESAD_CHEST dataset -> sampling_rate = 700 Hz
+    elif dataset_name == 'RESAMPLED_WESAD_CHEST':
+        # Initialize dataset paths
+        resampled_wesad_file_path = osp.join(dataset_folder_path, 'wesad_chest_resampling_dataset.pkl')
+        dataset = pickle.load(open(resampled_wesad_file_path, 'rb')) # Load RESAMPLED_WESAD_CHEST dataset -> sampling_rate = 4 Hz
     elif dataset_name == 'WESAD_WRIST':
         # Initialize dataset paths
         wesad_wrist_file_path = osp.join(dataset_folder_path, 'wesad_wrist_dataset.pkl')
@@ -63,9 +67,10 @@ def load_raw_dataset(dataset_name: str):
 
 # %%
 # -- Uncomment the dataset that you wanna load -- # 
-# dataset_name = 'AffectiveROAD'
-# dataset_name = 'WESAD_CHEST'
+dataset_name = 'AffectiveROAD'
+dataset_name = 'WESAD_CHEST'
 dataset_name = 'WESAD_WRIST'
+# dataset_name = 'RESAMPLED_WESAD_CHEST'
 # dataset_name = 'DCU_NVT_EXP1'
 
 
@@ -113,6 +118,19 @@ def map_ground_truth(ground_truth: Dict[str, Dict[str, List[int]]], window_size:
     gt = []
     for user_id, data in tqdm(ground_truth.items()):
         for task_id, _ground_truth in data.items():
+            # if dataset_name == 'AffectiveROAD':
+                # len_ground_truth = len(_ground_truth)
+                # start_index = window_size * sampling_rate # The true index of the signal at a time-point
+                # step = window_shift * sampling_rate
+                # _gt = [np.mean(_ground_truth[index-start_index+1:index+1]) for index in range(start_index, len_ground_truth, step)]
+                # _gt = [np.mean(MinMaxScaler().fit_transform(np.array(_ground_truth[index-start_index:index]).reshape(-1, 1)).ravel()) for index in range(start_index, len_ground_truth, step)] # Append the flatten array
+                # print(_gt)
+                # HIGH_THRESHOLD = 2 / 3
+                # LOW_THRESHOLD = 1 / 3
+                # _gt = [1 if value >= HIGH_THRESHOLD else 0 if value < LOW_THRESHOLD else -1 for value in _gt]
+                # _gt = [1 if value >= 0.5 else 0 for value in _gt]
+                # gt += _gt
+            # else:
             len_ground_truth = len(_ground_truth)
             start_index = int(window_size * sampling_rate) # The true index of the signal at a time-point
             step = int(window_shift * sampling_rate)
@@ -144,7 +162,7 @@ def generate_data_groups_from_ground_truth(ground_truth: Dict[str, Dict[str, Lis
 # %%
 def get_sampling_rate(dataset_name: str) -> int:
     sampling_rate = None
-    if dataset_name in ['AffectiveROAD', 'WESAD_WRIST']:
+    if dataset_name in ['AffectiveROAD', 'WESAD_WRIST', 'RESAMPLED_WESAD_CHEST']:
         sampling_rate = 4
     elif dataset_name == 'WESAD_CHEST':
         sampling_rate = 700
@@ -156,8 +174,8 @@ def get_sampling_rate(dataset_name: str) -> int:
 # ## Extract statistical features
 
 # %%
-WINDOW_SIZE = 60 # the length of signal which is cut to extract statistical feature equals to 60 seconds
-WINDOW_SHIFT = 20 # the step of the sliding window 
+WINDOW_SIZE = 120 # the length of signal which is cut to extract statistical feature equals to 60 seconds
+WINDOW_SHIFT = 0.25 # the step of the sliding window 
 SAMPLING_RATE = get_sampling_rate(dataset_name)
 
 
@@ -184,23 +202,19 @@ dataset_folder_path = get_dataset_folder_path(dataset_name)
 
 # %%
 # Save the features to files in .npy format
-feat_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_stats_feats.npy')
+feat_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_eda_stats_feats_{WINDOW_SHIFT}_{WINDOW_SIZE}.npy')
 np.save(feat_output_file_path, eda_stats_features)
 
 
 # %%
 # Save the ground-truth of the corresponding signal at its corresponding time-point
-gt_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_ground_truth.npy')
+gt_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_ground_truth_{WINDOW_SHIFT}_{WINDOW_SIZE}.npy')
 np.save(gt_output_file_path, mapped_ground_truth)
 
 
 # %%
 # Save the user_id mapping of the statistical features
-groups_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_groups.npy')
+groups_output_file_path = osp.join(dataset_folder_path, f'{dataset_name}_groups_{WINDOW_SHIFT}_{WINDOW_SIZE}.npy')
 np.save(groups_output_file_path, groups) 
-
-
-# %%
-
 
 

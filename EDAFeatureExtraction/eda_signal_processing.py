@@ -4,6 +4,7 @@ from typing import Dict, List
 from collections import defaultdict
 import neurokit2 as nk
 from scipy.stats import kurtosis, skew, linregress, pearsonr
+from sklearn.preprocessing import MinMaxScaler
 import math
 
 
@@ -17,6 +18,7 @@ def resampling_data_signal(data: Dict[str, Dict[str, np.array]], sampling_rate: 
 
 
 def extract_eda_features(eda: List[float], sampling_rate) -> pd.DataFrame:
+    # eda = MinMaxScaler().fit_transform(np.array(eda).reshape(-1, 1)).ravel()
     HIGHCUT_FREQUENCY = 5 # defaults as BioSPPy
     nyquist_freq = 2 * HIGHCUT_FREQUENCY / sampling_rate # Normalize frequency to Nyquist Frequency (Fs/2)
     if 0 < nyquist_freq < 1:
@@ -32,6 +34,11 @@ def extract_statistics_eda_features(eda: pd.DataFrame) -> np.array:
     eda_raw = eda['EDA_Raw'].values
     eda_decomposed_phasic = eda['EDA_Phasic'].values
     eda_decomposed_tonic = eda['EDA_Tonic'].values
+    # NORMALIZED FEATURES
+    # eda_raw = MinMaxScaler().fit_transform(np.array(eda_raw).reshape(-1, 1)).ravel()
+    # eda_decomposed_tonic = MinMaxScaler().fit_transform(np.array(eda_decomposed_tonic).reshape(-1, 1)).ravel()
+    # eda_decomposed_phasic /= np.max(eda_decomposed_phasic) 
+    # ---------------------
     scr_peaks = eda['SCR_Peaks'].values
     scr_onsets = eda['SCR_Onsets'].values
     scr_amplitude = eda['SCR_Amplitude'].values
